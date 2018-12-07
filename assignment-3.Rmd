@@ -1,0 +1,207 @@
+---
+title: "Assignment 3"
+author: "Oksana Rebrik"
+date: "03 12 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#devtools::install_github("ewan/stats_course", subdir="data/clark_judgments")
+library(clarkjudgments)
+library(dplyr)
+source("functions.R")
+```
+
+```{r}
+?clarkjudgments::acceptability
+```
+
+```{r}
+acceptability <-  clarkjudgments::acceptability
+acceptability_100 <- acceptability %>% dplyr::filter( MOP == "MOP100")
+acceptability_100$language <- as.factor(acceptability_100$language)
+```
+
+```{r}
+set.seed(1)
+model_1 <- lm(rating ~ language,data = acceptability_100)
+summary(model_1)
+```
+
+It is clear from the summary, that mean rating for *adger-good* is more on 60.94. The model explains over 50% of data.
+
+##Question 1
+
+```{r}
+library(ggplot2)
+acceptability_100 %>% 
+ggplot(aes(x = rating))+
+  geom_density()+
+  geom_histogram(binwidth = 1)+
+  theme_minimal()+
+  labs(title="Density plot of rating")
+```
+
+There are two polar modes in rating distribution with peaks at 0 and at 100. It is totally not normal. 
+
+This data does not meet assumptions
+ 1. Linear relationship
+ 2. Multivariate normality
+
+```{r}
+qqnorm(acceptability_100$rating, pch = 1, frame = FALSE)
+qqline(acceptability_100$rating, col = "steelblue", lwd = 2)
+```
+qqplot shows not normal distribution of data. (If it is nesessary to coduct qqplot for such distribution)
+
+
+##Question 2
+
+
+Generate many samples
+
+```{r}
+summary(acceptability_100$language)
+824/(824+840) # calculation of probability for two groups
+
+size <- nrow(acceptability_100)
+prob <- 0.4951923 # probability of the first one(bad)
+
+sd_acc <- sd(acceptability_100$rating)
+mn_acc <- mean(acceptability_100$rating)
+
+set.seed(1)
+
+simulated_accep_same <- data_frame(
+  "language" = sample(c("adger-bad", "adger-good"), size, replace=TRUE, prob = c(prob, 1-prob)),
+  "rating" = rnorm(size, mn_acc, sd_acc))
+```
+
+
+```{r}
+bad <-  acceptability_100 %>% filter(language == "adger-bad") %>% summarise(mn_acc_bad = mean(rating), sd_acc_bad = sd(rating))
+
+good <- acceptability_100 %>% filter(language == "adger-good") %>% summarise(mn_acc_good = mean(rating), sd_acc_good = sd(rating))
+
+set.seed(1)
+
+adger_bad <- rnorm(size/2, bad$mn_acc_bad, bad$sd_acc_bad)
+adger_good <- rnorm(size/2,good$mn_acc_good, good$sd_acc_good)
+ratings <- c(adger_bad, adger_good)
+
+simulated_accep_diff <- data_frame(
+  "language" = rep(c("adger-bad", "adger-good"), times = c(size/2, size/2)),
+  "rating" = ratings)
+```
+
+```{r}
+
+ggplot()+
+  geom_density(data = simulated_accep_same, aes(x = rating, fill = "no difference"), alpha = 0.9)+
+  geom_density(data = simulated_accep_diff, aes(x = rating, fill = "real difference"), alpha = 0.6)+
+  theme_bw()+
+  labs(title="comparison of sumalated data")+ 
+  guides(fill=guide_legend(title="Difference in mean"))
+```
+
+Generated data with a real difference in mean looks like more similar to our observed data. And in general, it is less normal. The graph shows that there are long tails in both distributions.
+
+```{r}
+set.seed(1)
+model_no_diff <- lm(rating ~ language, data = simulated_accep_same)
+summary(model_no_diff)
+```
+
+Variable language does not significat for data, that was simulated with *no difference* in means.
+
+```{r}
+set.seed(1)
+model_diff <- lm(rating ~ language, data = simulated_accep_diff)
+summary(model_diff)
+```
+
+For data that was generated with same *sd*, and *mean* as observed data,  _languageadger-good_ significant, and similar to observed, however, the real rating cannot be negative. The model should not be interpreted the same way, and can not be compared with the original.
+
+For next step limits for each distribution will be set. Minimum at 0, Maximum at 100
+
+```{r}
+set.seed(1)
+
+simulated_accep_same_2 <- data_frame(
+  "language" = sample(c("adger-bad", "adger-good"), size, replace=TRUE, prob = c(prob, 1-prob)),
+  "rating" = my_sample(size, mn_acc, sd_acc, 0, 100))
+```
+
+```{r}
+set.seed(1)
+adger_bad_2 <- my_sample(size/2, bad$mn_acc_bad, bad$sd_acc_bad, 0, 100)
+adger_good_2 <- my_sample(size/2,good$mn_acc_good, good$sd_acc_good, 0, 100)
+ratings_2 <- c(adger_bad_2, adger_good_2)
+
+simulated_accep_diff_2 <- data_frame(
+  "language" = rep(c("adger-bad", "adger-good"), times = c(size/2, size/2)),
+  "rating" = ratings_2)
+```
+
+
+```{r}
+ggplot()+
+  geom_density(data = simulated_accep_same_2, aes(x = rating, fill = "no difference"), alpha = 0.9)+
+  geom_density(data = simulated_accep_diff_2, aes(x = rating, fill = "real difference"), alpha = 0.6)+
+  geom_density(data = acceptability_100, aes(x = rating, fill = "real data"), alpha = 0.4)+
+  theme_bw()+
+  labs(title="comparison of sumalated data 2")+ 
+  guides(fill=guide_legend(title="Difference in mean"))
+```
+
+Data, that was generated with limits shows much more similarity to observed. Generated date, that follows real difference in mean, repeat the shape of the distribution.
+
+The main problem of simulated data is normality of generation. When we make the assumption that real data is normally distributed, (when it is not) we try to generate not normal data with function, that generates the normal distribution.
+
+Difference between groups is an important part of data analysis because it affects model interpretation. When data in groups differ, but we make the wrong assumption that they are similar, it leads to misjudgment of the effect of the group. If we make the wrong estimation of the level of the effect, group membership will be misunderstood. For anecdotal example we can think about credit scoring when approving a large amount of credit for a person without a full-time job, seniority and real estate leads to the loss of millions and billions.
+
+##Question 3
+
+```{r}
+set.seed(1)
+
+small_size <- 3
+
+simulated_accep_same_3 <- data_frame(
+  "language" = sample(c("adger-bad", "adger-good"), small_size, replace=TRUE, prob = c(prob, 1-prob)),
+  "rating" = my_sample(small_size, mn_acc, sd_acc, 0, 100))
+```
+
+```{r}
+set.seed(1)
+prob_3 <- sample(c(0,1), 1)# flip a coin for repeat bad or good language
+
+
+adger_bad_3 <- my_sample(small_size/2 + prob_3, bad$mn_acc_bad, bad$sd_acc_bad, 0, 100)
+adger_good_3 <- my_sample(small_size/2 + (1 - prob_3), good$mn_acc_good, good$sd_acc_good, 0, 100)
+ratings_3 <- c(adger_bad_3, adger_good_3)
+
+simulated_accep_diff_3 <- data_frame(
+  "language" = rep(c("adger-bad", "adger-good"), times = c(small_size/2 + prob_3, small_size/2+ (1 - prob_3))),
+  "rating" = ratings_3)
+```
+
+
+
+```{r}
+ggplot()+
+  geom_density(data = simulated_accep_same_3, aes(x = rating, fill = "no difference"), alpha = 0.9)+
+  geom_density(data = simulated_accep_diff_3, aes(x = rating, fill = "real difference"), alpha = 0.6)+
+  geom_density(data = acceptability_100, aes(x = rating, fill = "real data"), alpha = 0.4)+
+  theme_bw()+
+  labs(title="comparison of sumalated data 3")+ 
+  guides(fill=guide_legend(title="Difference in mean"))
+```
+
+For the first sigh, impossible to make a hypothesis about the similarity of data, distribution.
+I have changed seed 10 times, and each time distribution was unlike previous. I am pretty sure, that 10, or even 100 is not enough to make a strong statement about the meaninglessness of a small sample. Besides the irony of the situation, there is a simple problem of small sample data. It is unrepresentative for a general population. These three observations appear in a random part of the rating, but they follow rules of observed data. When the difference in mean was same as real, I was able to distinguish between two language categories even in data with three observations.
+
